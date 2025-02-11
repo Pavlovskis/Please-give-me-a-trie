@@ -75,8 +75,8 @@ impl Node {
         &self.children
     }
 
-    pub fn get_child(&self, c:char) -> Option<NodeRef> {        
-        self.children.get(&c).cloned()
+    pub fn get_child(&self, c:char) -> Option<&NodeRef> {        
+        self.children.get(&c)
     }
 
     pub fn new_child(&mut self, c:char, is_end_of_word:bool) -> NodeRef {

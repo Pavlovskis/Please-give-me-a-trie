@@ -1,9 +1,32 @@
 #![allow(dead_code)]
 
-use std::{collections::HashMap, fmt::Display, fs::File, io::{BufRead, BufReader}};
+use std::{collections::HashMap, fmt::Display, fs::File, io::{BufRead, BufReader, Read, Seek, SeekFrom}};
 
 use super::node::{Node, NodeRef, NodeRefOps};
 
+/// Growable prefix tree, written as `Trie`
+/// 
+/// # Examples
+/// 
+/// ``` 
+/// let mut trie = Trie::new();
+/// trie.push("first");
+/// trie.push("second");
+/// 
+/// ```
+/// The `trie` macro is provided for convenient initialization:
+/// 
+/// ```
+/// let mut trie1 = trie!["some", "word", "here"];
+/// trie.inser("word2");
+/// 
+/// let mut trie2 = Trie::from(["some", "word", "here", "word2"]);
+/// assert_eq!(trie1, trie2)
+/// ```
+///
+/// # Fields
+/// - `words`: Number of words that are in the tree.
+/// - `root`: Root of prefix tree
 pub struct Trie {
     pub words:usize,
     pub root:NodeRef,
@@ -18,8 +41,17 @@ impl Display for Trie {
     }
 }
 
+impl<const N: usize> From<[&str; N]> for Trie {
+    fn from(value: [&str; N]) -> Self {
+        let mut trie:Trie = Trie::new();
+
+        for val in value.into_iter() { trie.insert(val); }
+        trie
+    }
+}
+
 impl Trie {
-    /// Create new empty [`Trie`].
+    /// Create new empty `Trie`.
     /// 
     /// # Examples
     /// ```
@@ -54,36 +86,6 @@ impl Trie {
         res
     }
 
-    /// Get only the words that begin with the provided suffix, excludes the provided suffix from the resulting words, 
-    /// returns unsorted array of suffixes.
-    /// # Examples
-    /// ```
-    /// let mut trie:Trie = Trie::new();
-    /// 
-    /// trie.inser("and");
-    /// trie.inser("ant");
-    /// trie.inser("anymore");
-    /// 
-    /// let mut sufs:Vec<String> = t2.get_suffix_of("an");
-    /// sufs.sort();
-    /// 
-    /// assert_eq!(vec!["d".to_string(), "t".to_string(), "ymore".to_string()], sufs);
-    /// ```
-    /// # Time Complexity
-    /// Takes <i>O</i>(n) time
-    pub fn get_suffix_of(&self, suf:&str) -> Vec<String> {
-        let mut res:Vec<String> = Vec::with_capacity(8);
-
-        let Some(cur) = self.go_to(suf) else { return res; };
-        
-        for (_, node) in cur.as_ref().borrow().get_children() {
-            let mut suf:Vec<String> = node.clone().preorder();
-            res.append(&mut suf);
-        }
-
-        res
-    }
-
     /// Check if the word is in trie, stops as soon as possible if one of the char differs
     /// 
     /// # Examples
@@ -97,11 +99,9 @@ impl Trie {
     /// # Time Complexity
     /// Takes <i>O</i>(1) time
     pub fn contains(&self, word:&str) -> bool {
-        let Some(cur) = self.go_to(word) else {
-            return false;
-        };
+        let Some(cur) = self.go_to(word) else { return false; };
         if cur.as_ref().borrow().is_end_of_word { return true; }
-
+        
         false
     }
 
@@ -122,7 +122,7 @@ impl Trie {
         for (i, ch) in word.char_indices() {
             if i == word.len() - 1 { is_last_char = true; }
             
-            let ochild:Option<NodeRef> = cur.as_ref().borrow_mut().get_child(ch);
+            let ochild:Option<NodeRef> = cur.as_ref().borrow_mut().get_child(ch).cloned();
             if let Some(node) = ochild { // if current node has the child
                 // println!("{:?}", cur.as_ref().borrow().get_children());
                 if !is_last_char {
@@ -174,7 +174,7 @@ impl Trie {
         for (i, ch) in word.char_indices() {
             if i == word.len() - 1 { is_last_char = true; }
 
-            let ochild:Option<NodeRef> = cur.as_ref().borrow().get_child(ch);
+            let ochild:Option<NodeRef> = cur.as_ref().borrow().get_child(ch).cloned();
             if let Some(node) = ochild {
                 if is_last_char {
                     if node.as_ref().borrow().children_size() > 0 {
@@ -202,15 +202,15 @@ impl Trie {
             println!("{}", child);
             node_to_change.as_ref().borrow_mut().remove_child(child);
         }
-    } 
+    }
 
     /// Try find a node that coincides with end of the word
-    fn go_to(&self, word:&str) -> Option<NodeRef> {
+    pub fn go_to(&self, word:&str) -> Option<NodeRef> {
         let mut cur:NodeRef = self.root.clone();
 
         let mut pchars = word.chars();
         while let Some(ch) = pchars.next() {
-            let ochild = cur.as_ref().borrow().get_child(ch);
+            let ochild = cur.as_ref().borrow().get_child(ch).cloned();
             
             if let Some(node) = ochild {
                 cur = node;
@@ -218,7 +218,6 @@ impl Trie {
         }
         Some(cur)
     }
-
 }
 
 pub struct TrieBuilder {
@@ -240,11 +239,11 @@ impl TrieBuilder {
     pub fn build(self) -> Trie {
         let mut trie:Trie = Trie::new();
 
-        let Some(reader) = self.reader else { return trie; };
+        let Some(mut reader) = self.reader else { return trie; };
 
         let lines = if let Some(l) = self.lines { l } else { usize::MAX };
 
-        for (i, raw) in reader.lines().enumerate() {
+        for (i, raw) in reader.by_ref().lines().enumerate() {
             if i >= lines { break; }
             
             let Ok(line) = raw else { 
@@ -254,13 +253,13 @@ impl TrieBuilder {
 
             trie.insert(line.trim());
         }
+        let _ = reader.seek(SeekFrom::Start(0));
 
         trie
     }
 }
 
 impl From<BufReader<File>> for TrieBuilder {
-
     /// Iterate through a file and insert all the words into prefix tree
     /// 
     /// # Examples 
@@ -276,3 +275,4 @@ impl From<BufReader<File>> for TrieBuilder {
         TrieBuilder { reader: Some(value), lines: None }
     }
 }
+
