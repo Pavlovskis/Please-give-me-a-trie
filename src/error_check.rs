@@ -1,4 +1,4 @@
-use crate::{node::NodeRef, tree::Trie};
+use crate::tree::Trie;
 
 pub trait ErrorCheckable {
     /// If word is not found in trie, try to find closest words to the provided string
@@ -12,18 +12,13 @@ impl ErrorCheckable for Trie {
 
         let mut res:Vec<String> = Vec::with_capacity(4);
 
-        let _edits:[fn(&Trie, word:&str) -> Vec<String>; 4] = [
+        let edits:[fn(&Trie, word:&str) -> Vec<String>; 4] = [
             Self::deletion, Self::transposition, Self::alteration, Self::insertion 
         ];
 
-        // for edit in edits {
-        //     res.append( &mut edit(&self, word, 1) );
-        // }
-
-        // res.append( &mut self.deletion(word) );
-        // res.append( &mut self.transposition(word) );
-        res.append( &mut self.alteration(word) ); // todo!
-        // res.append( &mut self.insertion(word) );
+        for edit in edits {
+            res.append( &mut edit(&self, word) );
+        }
 
         if res.is_empty() { return None; }
 
@@ -101,7 +96,7 @@ impl ErrorCheckEdits for Trie {
     fn alteration(&self, word:&str) -> Vec<String> {
         let mut res:Vec<String> = Vec::with_capacity(word.len());
         
-        for (i, ch) in word.char_indices() {
+        for (i, _) in word.char_indices() {
             let (left, right) = ( &word[0..i], &word[i + 1..] );
             
             for n in 97..123 as u8 {
@@ -122,7 +117,7 @@ impl ErrorCheckEdits for Trie {
     fn insertion(&self, word:&str) -> Vec<String> {
         let mut res:Vec<String> = Vec::with_capacity(16);
 
-        for (i, ch) in word.char_indices() {
+        for (i, _) in word.char_indices() {
             let (left, right) = ( &word[0..i], &word[i..] );
 
             for n in 97..123 as u8 {
@@ -136,8 +131,6 @@ impl ErrorCheckEdits for Trie {
                 }
             }
         }
-        
-
         res
     }
 }
